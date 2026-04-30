@@ -35,7 +35,7 @@ export default function Home() {
 
   const [userPlan, setUserPlan] = useState("free");
   const [dailyUsage, setDailyUsage] = useState(0);
-  const [remainingAnalyses, setRemainingAnalyses] = useState(5);
+  const [remainingAnalyses, setRemainingAnalyses] = useState(2);
 
   const [vin, setVin] = useState("");
   const [manualModel, setManualModel] = useState("");
@@ -242,7 +242,7 @@ export default function Home() {
 
       setUserPlan("free");
       setDailyUsage(0);
-      setRemainingAnalyses(5);
+      setRemainingAnalyses(2);
       return;
     }
 
@@ -264,7 +264,7 @@ export default function Home() {
 
     setUserPlan(data.plan || "free");
     setDailyUsage(usage);
-    setRemainingAnalyses(Math.max(5 - usage, 0));
+    setRemainingAnalyses(Math.max(2 - usage, 0));
   };
 
   const checkUsageLimit = async () => {
@@ -301,9 +301,9 @@ export default function Home() {
       return true;
     }
 
-    if ((data.dailyUsage || 0) >= 5) {
+    if ((data.dailyUsage || 0) >= 2) {
       alert(
-        "🚫 Llegaste al límite gratis de 5 análisis diarios. Solicita PRO por WhatsApp."
+        "🚫 Llegaste al límite gratis de 2 análisis diarios. Solicita PRO por WhatsApp."
       );
       return false;
     }
@@ -321,7 +321,7 @@ export default function Home() {
 
     setUserPlan("free");
     setDailyUsage(newUsage);
-    setRemainingAnalyses(Math.max(5 - newUsage, 0));
+    setRemainingAnalyses(Math.max(2 - newUsage, 0));
 
     return true;
   };
@@ -1065,7 +1065,7 @@ export default function Home() {
                       </p>
 
                       <p className="text-gray-300">
-                        Uso diario: {u.dailyUsage || 0}/5
+                        Uso diario: {u.dailyUsage || 0}/2
                       </p>
 
                       <p className="text-gray-500 text-sm">
