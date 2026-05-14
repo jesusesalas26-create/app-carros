@@ -15,19 +15,24 @@ export default function VinScanner({ onScan }: VinScannerProps) {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [manualVin, setManualVin] = useState("");
 
-  const isValidVin = (value: string) => /^[A-HJ-NPR-Z0-9]{17}$/.test(value);
+  const isValidVin = (value: string) =>
+    /^[A-HJ-NPR-Z0-9]{17}$/.test(value);
 
   const cleanVinText = (text: string) => {
-    const upper = text.toUpperCase().replace(/[IOQ]/g, "");
-    const candidates = upper.match(/[A-HJ-NPR-Z0-9]{10,17}/g) || [];
+    const fixed = text
+      .toUpperCase()
+      .replace(/O/g, "0")
+      .replace(/I/g, "1")
+      .replace(/Q/g, "")
+      .replace(/[^A-Z0-9]/g, "");
 
-    const best =
-      candidates
-        .map((item) => item.replace(/[^A-HJ-NPR-Z0-9]/g, ""))
-        .filter((item) => item.length >= 10)
-        .sort((a, b) => b.length - a.length)[0] || "";
+    const matches = fixed.match(/[A-HJ-NPR-Z0-9]{17}/g);
 
-    return best.slice(0, 17);
+    if (matches && matches.length > 0) {
+      return matches[0];
+    }
+
+    return fixed.slice(0, 17);
   };
 
   const submitVin = (value: string) => {
@@ -89,12 +94,21 @@ export default function VinScanner({ onScan }: VinScannerProps) {
     const bitmap = await createImageBitmap(file);
 
     const shouldRotate = bitmap.height > bitmap.width;
+
     const maxSize = 1200;
 
-    const originalWidth = shouldRotate ? bitmap.height : bitmap.width;
-    const originalHeight = shouldRotate ? bitmap.width : bitmap.height;
+    const originalWidth = shouldRotate
+      ? bitmap.height
+      : bitmap.width;
 
-    const scale = Math.min(1, maxSize / Math.max(originalWidth, originalHeight));
+    const originalHeight = shouldRotate
+      ? bitmap.width
+      : bitmap.height;
+
+    const scale = Math.min(
+      1,
+      maxSize / Math.max(originalWidth, originalHeight)
+    );
 
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
@@ -102,16 +116,20 @@ export default function VinScanner({ onScan }: VinScannerProps) {
     canvas.width = Math.round(originalWidth * scale);
     canvas.height = Math.round(originalHeight * scale);
 
-    if (!ctx) throw new Error("No se pudo procesar la imagen");
+    if (!ctx) {
+      throw new Error("No se pudo procesar la imagen");
+    }
 
     ctx.fillStyle = "white";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.filter = "contrast(160%) brightness(115%) grayscale(100%)";
+    ctx.filter =
+      "contrast(180%) brightness(120%) grayscale(100%)";
 
     if (shouldRotate) {
       ctx.translate(canvas.width / 2, canvas.height / 2);
       ctx.rotate((90 * Math.PI) / 180);
+
       ctx.drawImage(
         bitmap,
         (-bitmap.width * scale) / 2,
@@ -120,7 +138,13 @@ export default function VinScanner({ onScan }: VinScannerProps) {
         bitmap.height * scale
       );
     } else {
-      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(
+        bitmap,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
     }
 
     return await new Promise<Blob>((resolve, reject) => {
@@ -130,7 +154,7 @@ export default function VinScanner({ onScan }: VinScannerProps) {
           else reject(new Error("No se pudo crear la imagen"));
         },
         "image/jpeg",
-        0.75
+        0.9
       );
     });
   };
@@ -142,18 +166,28 @@ export default function VinScanner({ onScan }: VinScannerProps) {
 
       const fastImage = await prepareImageFast(file);
 
-      const result = await Tesseract.recognize(fastImage, "eng", {
-        logger: () => {},
-      });
+      const result = await Tesseract.recognize(
+        fastImage,
+        "eng",
+        {
+          logger: () => {},
+          tessedit_pageseg_mode: "7",
+        }
+      );
 
       const rawText = result.data.text || "";
+
       const cleanVin = cleanVinText(rawText);
 
       if (isValidVin(cleanVin)) {
         onScan(cleanVin);
         await stopScanner();
       } else {
-        alert("No lo leyó completo. Escríbelo manual rápido o toma foto más cerca.");
+        setManualVin(cleanVin);
+
+        alert(
+          "No lo leyó completo. Corrige el VIN manualmente."
+        );
       }
     } catch (error: any) {
       alert("Error leyendo foto: " + error.message);
@@ -164,29 +198,32 @@ export default function VinScanner({ onScan }: VinScannerProps) {
 
   return (
     <div className="w-full">
-      <div className="rounded-xl overflow-hidden border border-blue-500 bg-black">
+      <div className="rounded-2xl overflow-hidden border border-blue-500 bg-black">
         <div id="reader" style={{ width: "100%" }} />
       </div>
 
       <div className="mt-4 bg-[#0f172a] border border-blue-500 rounded-2xl p-4">
-        <h3 className="text-xl font-bold text-blue-400 mb-2">
-          Leer VIN rápido
+        <h3 className="text-2xl font-bold text-blue-400 mb-2">
+          🚗 Scanner VIN rápido
         </h3>
 
         <p className="text-gray-300 text-sm mb-4 leading-relaxed">
-          En subasta: primero prueba el código de la puerta. Si es texto, toma
-          foto cerca del VIN. Si falla, escríbelo manual.
+          En subasta: primero intenta leer el VIN directo.
+          Si no funciona, toma foto cerca y horizontal.
         </p>
 
         <label className="block w-full bg-blue-600 hover:bg-blue-700 text-white text-center py-4 rounded-xl font-bold mb-4 cursor-pointer text-lg">
-          📸 Tomar foto rápida del VIN
+          📸 Tomar foto del VIN
           <input
             type="file"
             accept="image/*"
             capture="environment"
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) handleImageOCR(file);
+
+              if (file) {
+                handleImageOCR(file);
+              }
             }}
             className="hidden"
           />
@@ -195,21 +232,24 @@ export default function VinScanner({ onScan }: VinScannerProps) {
         {ocrLoading && (
           <div className="mb-4 bg-yellow-900/40 border border-yellow-500 rounded-xl p-3">
             <p className="text-yellow-300 font-bold">
-              Leyendo VIN rápido...
+              Leyendo VIN...
             </p>
+
             <p className="text-yellow-100 text-sm">
-              Si tarda mucho, ciérralo y escríbelo manual.
+              Espera unos segundos.
             </p>
           </div>
         )}
 
         <label className="block text-sm text-gray-400 mb-2 font-semibold">
-          VIN manual
+          VIN manual o corregido
         </label>
 
         <input
           value={manualVin}
-          onChange={(e) => setManualVin(cleanVinText(e.target.value))}
+          onChange={(e) =>
+            setManualVin(cleanVinText(e.target.value))
+          }
           placeholder="Ej: 5YJSA1E26HF000337"
           maxLength={17}
           autoCapitalize="characters"
@@ -227,7 +267,7 @@ export default function VinScanner({ onScan }: VinScannerProps) {
         </button>
 
         <p className="text-gray-500 text-xs mt-3">
-          Tip rápido: el sticker de la puerta suele leer mejor que el vidrio.
+          Tip: el sticker de la puerta suele leer mejor que el vidrio.
         </p>
       </div>
     </div>
